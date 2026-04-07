@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Intern Intel — Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260407" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="header">
+        <div class="header__title">
+          <h1>Intern Opportunity Intelligence</h1>
+          <p class="header__subtitle">Canada-focused listings, priorities, and application tracking</p>
+        </div>
+        <div class="header__actions">
+          <label class="filter">
+            <input type="checkbox" id="filter-high" />
+            <span>High signal only</span>
+          </label>
+          <label class="filter">
+            <input type="checkbox" id="filter-canada" />
+            <span>Canada</span>
+          </label>
+          <button type="button" class="btn btn--ghost" id="btn-refresh" aria-label="Refresh list">
+            Refresh
+          </button>
+          <button type="button" class="btn btn--primary" id="btn-scan" aria-label="Run full scan">
+            Run scan
+          </button>
+        </div>
+      </header>
+
+      <section class="status-bar" id="status-bar" aria-live="polite"></section>
+
+      <main class="main">
+        <div class="table-wrap" role="region" aria-label="Job listings">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Applied</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Title</th>
+                <th scope="col">Company</th>
+                <th scope="col">Location</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Source</th>
+                <th scope="col">Link</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body">
+              <tr>
+                <td colspan="8" class="empty">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+    <script src="/static/app.js?v=20260407" type="module"></script>
+  </body>
+</html>
