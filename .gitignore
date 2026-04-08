@@ -1,7 +1,11 @@
 .venv/
 __pycache__/
 *.py[cod]
+
+# Secrets and machine-local config — copy `.env.example` to `.env` and never commit `.env`.
 .env
+.env.*
+!.env.example
 data/*.db
 .pytest_cache/
 .mypy_cache/

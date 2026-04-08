@@ -135,6 +135,17 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
         "cleared": 0,
     }
 
+    # Snapshot notified_at by content_hash BEFORE clearing so previously-notified
+    # jobs are not re-alerted after the table is wiped and re-populated.
+    notified_snapshot: dict[str, Any] = {
+        row.content_hash: row.notified_at
+        for row in db.query(Job).filter(Job.notified_at.isnot(None)).all()
+    }
+    if notified_snapshot:
+        logger.debug(
+            "Pipeline: preserved notified_at for %s job(s)", len(notified_snapshot)
+        )
+
     cleared = db.query(Job).delete(synchronize_session=False)
     db.flush()
     stats["cleared"] = cleared
@@ -195,6 +206,8 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
             priority=score.priority,
             reason=score.reason,
             tags=tags,
+            # Restore previous notified_at so we don't re-alert on every scan
+            notified_at=notified_snapshot.get(ch),
         )
         db.add(job)
         db.flush()

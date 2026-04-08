@@ -113,11 +113,29 @@ function renderTags(tags) {
   return `<span class="tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span>`;
 }
 
-async function fetchJobs() {
+const PAGE_SIZE = 200;
+
+/** Fetch every page until a short page or empty page (do not rely on total alone — avoids edge cases). */
+async function fetchAllJobs() {
   const base = state.highOnly ? "/jobs/high-priority" : "/jobs";
-  const r = await fetch(`${base}?limit=200`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  let skip = 0;
+  let reportedTotal = null;
+  const items = [];
+  for (;;) {
+    const qs = new URLSearchParams({ skip: String(skip), limit: String(PAGE_SIZE) });
+    const r = await fetch(`${base}?${qs}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (reportedTotal === null && typeof data.total === "number") {
+      reportedTotal = data.total;
+    }
+    const page = data.items || [];
+    if (page.length === 0) break;
+    items.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    skip += PAGE_SIZE;
+  }
+  return { total: reportedTotal ?? items.length, items };
 }
 
 function setStatus(msg, kind = "") {
@@ -130,8 +148,8 @@ async function loadTable() {
   const tbody = $("#jobs-body");
   tbody.innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
   try {
-    const data = await fetchJobs();
-    let items = data.items || [];
+    const { total: apiTotal, items: rawItems } = await fetchAllJobs();
+    let items = rawItems;
     if (state.canadaOnly) {
       items = items.filter((j) => !isExcludedNonCanada(j));
     }
@@ -140,8 +158,15 @@ async function loadTable() {
         ? "No jobs match the Canada filter. Try unchecking Canada or refresh data."
         : "No jobs yet. Run a scan or check the API.";
       tbody.innerHTML = `<tr><td colspan="8" class="empty">${esc(msg)}</td></tr>`;
+      setStatus(msg, "");
       return;
     }
+    const shown = items.length;
+    const hint =
+      state.canadaOnly && shown < apiTotal
+        ? `Showing ${shown} of ${apiTotal} jobs (Canada filter on). Scroll the table for the full list.`
+        : `Showing ${shown} job${shown === 1 ? "" : "s"}. Scroll the table for the full list.`;
+    setStatus(hint, "ok");
     tbody.innerHTML = items.map((j) => rowHtml(j)).join("");
     tbody.querySelectorAll("[data-applied-toggle]").forEach((btn) => {
       btn.addEventListener("click", () => {

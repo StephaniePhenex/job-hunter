@@ -163,15 +163,26 @@ body {
   overflow: hidden;
 }
 
+/* Scroll inside the table so all fetched rows are reachable without paging the API in the UI. */
 .table-wrap {
-  overflow-x: auto;
+  max-height: min(72vh, calc(100dvh - 13rem));
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  /* `collapse` + sticky `th` often causes the header row to paint over the first body row (ghosting). */
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.875rem;
+}
+
+.data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .data-table th,
@@ -182,19 +193,13 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.data-table th {
+.data-table thead th {
   font-weight: 600;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-  background: rgba(0, 0, 0, 0.15);
-}
-
-@media (prefers-color-scheme: light) {
-  .data-table th {
-    background: rgba(0, 0, 0, 0.03);
-  }
+  background: var(--bg-elevated);
 }
 
 .data-table tbody tr:hover td {

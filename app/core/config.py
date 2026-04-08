@@ -47,7 +47,18 @@ class Settings(BaseSettings):
         description="Listing page (avoid /internships/ which often returns HTTP 500).",
     )
 
+    # Eluta (Canada): HTML list pages, e.g. Software-Engineer-jobs slug or search URL.
+    eluta_enabled: bool = True
+    eluta_list_url: str = Field(
+        default="https://www.eluta.ca/Software-Engineer-jobs",
+        description="First page of job search/list; pagination uses ?pg=N.",
+    )
+    eluta_max_jobs: int = Field(default=60, ge=0, description="Max rows collected per scan.")
+    eluta_max_pages: int = Field(default=8, ge=1, description="Safety cap on list pages to fetch.")
+
     # After list scrape, GET job detail HTML and parse city/region (JSON-LD JobPosting).
+    # Enabled by default: Prosple/TalentEgg only give country-level location ("Canada");
+    # this upgrades them to city/region for accurate filtering and LLM scoring.
     job_location_detail_fetch_enabled: bool = True
     job_location_detail_max_per_source: int = 80
     job_location_detail_delay_sec: float = 0.2
