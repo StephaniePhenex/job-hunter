@@ -5,10 +5,10 @@ Production-minded MVP: aggregate internship postings from multiple sources, dedu
 ## Features
 
 - **Sources**: curated GitHub README (markdown table), Prosple, TalentEgg, Eluta (Canada) — see [Why each source helps](#why-each-source-helps-you-find-jobs) below
-- **Pipeline**: scrape → normalize → **focus role keyword filter** (all sources) → hash dedupe → **Gemini** (or OpenAI) scoring → Telegram notifications
+- **Pipeline**: scrape → normalize → **focus role keyword filter** (from [`user_profile.yaml`](user_profile.yaml), compiled in `app/utils/role_keywords.py`) → hash dedupe → **Gemini** (or OpenAI) scoring (`match_score`, `reason`, `tags` only; **priority** is keyword-derived) → Telegram notifications
 - **Scheduler**: APScheduler runs the full pipeline every **6 hours** (configurable)
-- **API**: `GET /jobs`, `GET /jobs/high-priority`, `POST /run-scan` (and `POST /jobs/run-scan`)
-- **Web dashboard** at `/` (static HTML/JS): table, filters, run-scan, **`applied_at`** with `PATCH /jobs/{id}/applied`
+- **API**: `GET /jobs`, `GET /jobs/high-priority`, `POST /run-scan` or `POST /jobs/run-scan`, `GET /scan-status` or `GET /jobs/scan-status`
+- **Web dashboard** at `/` (static HTML/JS): table, filters, run-scan, **`applied_at`** with `PATCH /jobs/{id}/applied`; client loads **all pages** of `/jobs` so the full result set is available (scroll the table)
 
 ## Why each source helps you find jobs
 
@@ -21,7 +21,7 @@ Each feed answers a different “where do postings actually show up?” problem.
 | **TalentEgg** | A **Canadian** early-career platform (`talentegg.ca`) with employer postings and student-focused roles. | **Another Canadian channel**: employers often post here who may not appear on Prosple or on the big US internship README. Adds **diversity of employers** (industries and company sizes) so you are not relying on a single board. |
 | **Eluta** | **Canadian job search** (`eluta.ca`) with organic HTML job listings (e.g. by role slug or search). | **General Canadian job market** coverage beyond “student-only” sites — useful for **software and related roles** that are posted like standard jobs. Helps when internships or junior roles are listed on broad job search engines rather than only on campus boards. |
 
-**Important**: All sources still pass the same **focus role keyword** gate in this repo (`app/utils/role_keywords.py`). If a posting’s title/description does not match any configured pattern, it is dropped before scoring — so you see a **curated** set aligned with the project’s role focus, not every row from every site.
+**Important**: All sources pass the same **focus role keyword** gate. Rules live in **[`user_profile.yaml`](user_profile.yaml)** (`keywords:`); edit that file to personalize filters and LLM profile (`profile:`). **Restart `uvicorn`** after changes (patterns load at import). If a posting’s title/company/description does not match any **keyword group**, it is dropped before LLM scoring.
 
 ## Requirements
 
@@ -112,7 +112,17 @@ curl -X POST http://127.0.0.1:8000/run-scan
 
 Poll **`GET /jobs/scan-status`** until the pipeline is idle, then refresh the table.
 
-### 8. Run tests (optional)
+### 8. Validate `user_profile.yaml` (optional)
+
+After editing keywords or `profile`, check for YAML/regex errors **before** restarting the server:
+
+```bash
+python scripts/validate_user_profile.py
+```
+
+Optional path: `python scripts/validate_user_profile.py /path/to/user_profile.yaml`. Exit code **0** means no blocking errors; warnings (e.g. zero keyword groups) are printed to stderr.
+
+### 9. Run tests (optional)
 
 ```bash
 pytest -q
@@ -126,12 +136,22 @@ pytest -q
 | Scoring always empty or errors | Set **`GEMINI_API_KEY`** or **`OPENAI_API_KEY`** in `.env` and restart `uvicorn`. |
 | Permission / port in use | Change port: `uvicorn app.main:app --host 127.0.0.1 --port 8001`. |
 | No jobs from a source | Check logs; external sites change HTML. Some listings are also **filtered out** by the global role keyword gate. |
+| Edited `user_profile.yaml` but no change | Restart **`uvicorn`**; keyword and profile YAML are read at process start. |
 
 ## Web dashboard
 
 After the server is running, open **http://127.0.0.1:8000/** for a table with refresh, **High signal** / **Canada** filters, **Run scan**, and **Mark applied** (`PATCH /jobs/{id}/applied`).
 
 Static assets live under `app/static/` and are served from `/static/...`.
+
+## API list ordering
+
+`GET /jobs` and `GET /jobs/high-priority` return rows in this order:
+
+1. **Priority** — `HIGH`, then `MEDIUM`, then `LOW` (priority comes only from keyword-group hit counts in [`user_profile.yaml`](user_profile.yaml)).
+2. **Intern-style titles first** — within the same priority, postings whose **title** looks like intern / internship / co-op / similar (see `app/api/routes/jobs.py`) are listed before other roles.
+3. **`match_score`** descending (nulls last).
+4. **`created_at`** descending.
 
 ## Environment variables
 
@@ -172,6 +192,6 @@ Apply / details → (link)
 ## Notes
 
 - External site HTML changes may break Prosple/TalentEgg/Eluta selectors; scrapers log errors and other sources continue.
-- TalentEgg: legacy paths such as `/internships/` may return HTTP **500**; default URL **`/latest-jobs`** (`TALENTEGG_INTERNSHIPS_URL`). **US-only** TalentEgg cards are dropped at scrape time. Rows must also pass the **global role keyword** gate (see `app/utils/role_keywords.py`).
-- **Role keywords** (all sources): only jobs whose title/company/description match at least one focus pattern are scored and stored. **Priority** (`HIGH` / `MEDIUM` / `LOW`) is derived from how many distinct keyword *groups* match (`priority_from_focus_group_hits` in `app/utils/role_keywords.py`): 1 group → LOW, 2–3 → MEDIUM, 4+ → HIGH — overriding the LLM’s priority while keeping LLM `match_score`, `tags`, and blended `reason`.
+- TalentEgg: legacy paths such as `/internships/` may return HTTP **500**; default URL **`/latest-jobs`** (`TALENTEGG_INTERNSHIPS_URL`). **US-only** TalentEgg cards are dropped at scrape time. Rows must also pass the **global role keyword** gate ([`user_profile.yaml`](user_profile.yaml) → `app/utils/role_keywords.py`).
+- **Role keywords** (all sources): only jobs whose title/company/description match at least one keyword **group** in `user_profile.yaml` are scored and stored. **Priority** (`HIGH` / `MEDIUM` / `LOW`) comes only from how many distinct groups match (`priority_from_focus_group_hits`): 1 group → LOW, 2–3 → MEDIUM, 4+ → HIGH. The LLM supplies **`match_score`**, **`reason`**, and **`tags`** only (no model-assigned priority).
 - GitHub source parses the configured README URL (markdown table with Company / Role / Location / Application columns).

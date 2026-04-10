@@ -6,6 +6,7 @@ import logging
 import time
 
 import httpx
+from httpx import HTTPStatusError
 
 from app.core.config import get_settings
 from app.utils.job_location_html import extract_location_from_job_html
@@ -55,19 +56,41 @@ def enrich_jobs_location_from_detail_pages(
                 break
             if not location_needs_detail_enrichment(j.location):
                 continue
-            try:
-                r = client.get(j.url)
-                r.raise_for_status()
-                loc = extract_location_from_job_html(r.text)
-                if loc and len(loc.strip()) > 2:
-                    j.location = loc.strip()[:512]
-                    n += 1
-            except Exception:
-                logger.debug(
-                    "%s: location enrich failed for %s",
-                    source_label,
-                    (j.url or "")[:96],
-                )
+            for attempt in range(3):
+                try:
+                    r = client.get(j.url)
+                    r.raise_for_status()
+                    loc = extract_location_from_job_html(r.text)
+                    if loc and len(loc.strip()) > 2:
+                        j.location = loc.strip()[:512]
+                        n += 1
+                    break
+                except HTTPStatusError as exc:
+                    if exc.response.status_code == 429 and attempt < 2:
+                        backoff = 5 * (2 ** attempt)  # 5s, 10s
+                        logger.warning(
+                            "%s: rate-limited (429) on %s; backing off %ss (attempt %s/3)",
+                            source_label,
+                            (j.url or "")[:80],
+                            backoff,
+                            attempt + 1,
+                        )
+                        time.sleep(backoff)
+                    else:
+                        logger.debug(
+                            "%s: location enrich HTTP %s for %s",
+                            source_label,
+                            exc.response.status_code,
+                            (j.url or "")[:96],
+                        )
+                        break
+                except Exception:
+                    logger.debug(
+                        "%s: location enrich failed for %s",
+                        source_label,
+                        (j.url or "")[:96],
+                    )
+                    break
             if delay:
                 time.sleep(delay)
 

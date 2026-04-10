@@ -5,8 +5,9 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import case, desc
+from sqlalchemy import case, desc, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.database import get_db
 from app.models.applied_url import AppliedUrl
@@ -16,6 +17,26 @@ from app.utils.role_keywords import merged_focus_and_llm_tags
 from app.utils.url_norm import normalize_application_url
 
 router = APIRouter()
+
+
+def _intern_role_boost() -> ColumnElement[int]:
+    """1 when the job title looks like an intern / co-op / placement role (else 0).
+
+    Used in ORDER BY DESC so internship-style postings sort above full-time roles
+    within the same priority tier.
+    """
+    t = Job.title
+    looks_intern = or_(
+        t.ilike("%internship%"),   # covers internship / internships / internship→*
+        t.ilike("% intern%"),      # covers ' intern', ' intern ', '/ intern', '(intern'
+        t.ilike("intern %"),       # starts with 'intern '
+        t.ilike("%co-op%"),        # covers ' co-op', 'co-op'
+        t.ilike("%coop%"),
+        t.ilike("% co op %"),
+        t.ilike("%student placement%"),
+        t.ilike("%summer student%"),
+    )
+    return case((looks_intern, 1), else_=0)
 
 
 class AppliedPatch(BaseModel):
@@ -35,8 +56,8 @@ def list_jobs(
 ) -> dict[str, Any]:
     """Return recent jobs (paginated).
 
-    Order: priority (HIGH → MEDIUM → LOW), then match_score descending (nulls last),
-    then created_at descending.
+    Order: priority (HIGH → MEDIUM → LOW), then intern/co-op style titles first,
+    then match_score descending (nulls last), then created_at descending.
     """
     prio = case(
         (Job.priority == "HIGH", 1),
@@ -48,6 +69,7 @@ def list_jobs(
         db.query(Job)
         .order_by(
             prio,
+            desc(_intern_role_boost()),
             desc(Job.match_score).nulls_last(),
             Job.created_at.desc(),
         )
@@ -70,8 +92,6 @@ def list_high_priority(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Jobs with HIGH priority or match_score > 0.75, paginated."""
-    from sqlalchemy import or_
-
     prio = case(
         (Job.priority == "HIGH", 1),
         (Job.priority == "MEDIUM", 2),
@@ -88,6 +108,7 @@ def list_high_priority(
         )
         .order_by(
             prio,
+            desc(_intern_role_boost()),
             desc(Job.match_score).nulls_last(),
             Job.created_at.desc(),
         )
@@ -191,8 +212,9 @@ def _job_to_dict(
         "company": j.company,
         "location": j.location,
         "url": j.url,
-        # Enough text for client-side Canada/remote heuristics (was 500; "remote" often appears later).
-        "description": j.description[:4000] if j.description else "",
+        # Truncated to 4000 chars for API payload size; full text stored in DB.
+        "description": (j.description or "")[:4000],
+        "description_truncated": len(j.description or "") > 4000,
         "posted_at": j.posted_at,
         "source": j.source,
         "content_hash": j.content_hash,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
@@ -129,7 +130,7 @@ def _scrape_eluta_with_page(page) -> list[JobNormalized]:
                 )
             )
 
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(random.randint(300, 900))
 
     logger.info("Eluta: collected %s jobs (cap=%s)", len(collected), cap)
     return collected

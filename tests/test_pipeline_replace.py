@@ -13,7 +13,7 @@ from app.utils.schemas import JobNormalized
 @patch("app.services.pipeline._score_many")
 def test_scan_drops_previous_rows(mock_score) -> None:
     mock_score.return_value = [
-        ScoreResult(match_score=0.6, priority="LOW", reason="ok", tags=[]),
+        ScoreResult(match_score=0.6, reason="ok", tags=[]),
     ]
 
     stale = JobNormalized(

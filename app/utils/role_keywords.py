@@ -1,145 +1,71 @@
-"""Unified role keyword gate for all job sources.
+"""Unified role keyword gate — loaded from user_profile.yaml.
 
-Aligned with product focus: builder / creator / AI+SaaS full-stack, Web3, media & entertainment
-architecture, DevRel, creative tech, digital assets, UX/front-end product engineering, etc.
+Each keyword group in the YAML can use:
+  terms: [...] — plain phrases compiled to a regex via re.escape + \\b anchors
+  regex: "..."  — raw regex pattern (overrides terms)
 """
 
 from __future__ import annotations
 
+import logging
 import re
-from typing import TYPE_CHECKING, Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from app.agents.llm_client import ScoreResult
 
-# Each entry: (human-readable chip label, regex). Order is stable for display.
-_FOCUS_GROUPS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    (
-        "Full-stack AI/SaaS",
-        re.compile(
-            r"full[\s-]*stack.{0,80}(ai|saas|sa\s*a\s*s)|\(ai\s*/\s*saas\)|"
-            r"(ai|saas).{0,50}full[\s-]*stack|full[\s-]*stack\s+engineer.{0,60}(ai|saas)",
-            re.IGNORECASE | re.DOTALL,
-        ),
-    ),
-    (
-        "AI builder",
-        re.compile(r"\b(ai|artificial\s+intelligence)\s*builder\b", re.IGNORECASE),
-    ),
-    (
-        "Product builder",
-        re.compile(r"\bproduct\s*builder\b", re.IGNORECASE),
-    ),
-    (
-        "Creator tools",
-        re.compile(
-            r"creator\s*tools|software\s*engineer.{0,50}creator|creator.{0,50}software\s*engineer",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Product engineer",
-        re.compile(r"\bproduct\s*engineer\b", re.IGNORECASE),
-    ),
-    (
-        "Software engineer",
-        re.compile(r"\bsoftware\s*engineer\b", re.IGNORECASE),
-    ),
-    (
-        "Full-stack engineer",
-        re.compile(r"\bfull[\s-]*stack\s*engineer\b", re.IGNORECASE),
-    ),
-    (
-        "Technical Content Engineer",
-        re.compile(r"technical\s*content\s*engineer", re.IGNORECASE),
-    ),
-    (
-        "MLOps / AI implementation",
-        re.compile(
-            r"\bmlops\b|\bml\s+ops\b|ai\s+implementation\s+engineer|"
-            r"mlops\s*/\s*ai|ai\s*/\s*mlops",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "UX engineer",
-        re.compile(r"\bux\s*engineer\b|u\.x\.\s*engineer", re.IGNORECASE),
-    ),
-    (
-        "Front-end / UI",
-        re.compile(
-            r"front[\s-]*end\s*engineer|frontend\s*engineer|"
-            r"(front[\s-]*end|frontend|ui).{0,40}engineer.{0,40}ui|ui\s*focus",
-            re.IGNORECASE,
-        ),
-    ),
-    ("Web3", re.compile(r"\bweb3\b", re.IGNORECASE)),
-    (
-        "Web3 full-stack",
-        re.compile(
-            r"web3.{0,80}full[\s-]*stack|full[\s-]*stack.{0,80}web3",
-            re.IGNORECASE | re.DOTALL,
-        ),
-    ),
-    (
-        "Architect (media)",
-        re.compile(
-            r"solution\s*architect.{0,120}(media|entertainment)|"
-            r"(media\s*&\s*entertainment|media\s+and\s+entertainment).{0,80}solution\s*architect|"
-            r"solution\s*architect.{0,120}(media\s*&|entertainment)",
-            re.IGNORECASE | re.DOTALL,
-        ),
-    ),
-    (
-        "DevRel",
-        re.compile(r"\bdevrel\b|developer\s*relations", re.IGNORECASE),
-    ),
-    (
-        "Creative technologist",
-        re.compile(r"creative\s*technologist", re.IGNORECASE),
-    ),
-    (
-        "Media engineer",
-        re.compile(r"media\s*engineer", re.IGNORECASE),
-    ),
-    (
-        "Digital assets",
-        re.compile(
-            r"digital\s*assets?\s*develop\w*|develop\w*.{0,30}digital\s*assets?",
-            re.IGNORECASE,
-        ),
-    ),
-    # Explicit product allowlist (games/media/marketing/engineering internships)
-    (
-        "Animation / VFX (games)",
-        re.compile(
-            r"\bvfx\b|"
-            r"\banimation\b.{0,70}(games?|intern|studio|sledgehammer)|"
-            r"sledgehammer\s+games|"
-            r"intern(ship)?.{0,30}\b(vfx|animation)\b|\b(vfx|animation)\b.{0,40}intern",
-            re.IGNORECASE | re.DOTALL,
-        ),
-    ),
-    (
-        "Digital marketing / Journalism",
-        re.compile(
-            r"journalism\s+and\s+digital\s+marketing|"
-            r"\bdigital\s+marketing\b.{0,100}\bintern(ship)?\b|"
-            r"\bintern(ship)?.{0,100}\bdigital\s+marketing\b|"
-            r"marketing,\s*rpm\s+internship",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Electrical engineering",
-        re.compile(
-            r"\belectrical\s+engineering\b.{0,50}\bintern(ship)?\b|"
-            r"\bintern(ship)?.{0,50}\belectrical\s+engineering\b",
-            re.IGNORECASE,
-        ),
-    ),
-)
+logger = logging.getLogger(__name__)
 
+_DEFAULT_YAML_PATH = Path(__file__).resolve().parents[2] / "user_profile.yaml"
+
+
+def _load_focus_groups(path: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Compile keyword groups from user_profile.yaml into (label, pattern) tuples."""
+    try:
+        import yaml
+    except ImportError:
+        logger.warning("PyYAML not installed; keyword filter disabled. Run: pip install pyyaml")
+        return ()
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data: dict[str, Any] = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.debug("user_profile.yaml not found at %s; keyword filter disabled", path)
+        return ()
+    except Exception:
+        logger.exception("Failed to parse %s; keyword filter disabled", path)
+        return ()
+
+    groups: list[tuple[str, re.Pattern[str]]] = []
+    for entry in data.get("keywords", []):
+        label: str = entry.get("label", "")
+        if not label:
+            continue
+
+        raw_regex: str | None = entry.get("regex")
+        terms: list[str] = entry.get("terms", [])
+
+        if raw_regex:
+            # Strip YAML literal/folded scalar newlines (> or |) used for readability
+            pattern_str = re.sub(r"\s+", " ", raw_regex).strip()
+        elif terms:
+            pattern_str = "|".join(
+                r"\b" + re.escape(t.strip()) + r"\b" for t in terms if t.strip()
+            )
+        else:
+            continue
+
+        try:
+            groups.append((label, re.compile(pattern_str, re.IGNORECASE | re.DOTALL)))
+        except re.error as exc:
+            logger.error("Bad regex for keyword group %r: %s", label, exc)
+
+    return tuple(groups)
+
+
+_FOCUS_GROUPS: tuple[tuple[str, re.Pattern[str]], ...] = _load_focus_groups(_DEFAULT_YAML_PATH)
 FOCUS_GROUP_TOTAL = len(_FOCUS_GROUPS)
 
 
@@ -152,7 +78,7 @@ def focus_group_labels_matched(
     company: str = "",
     description: str = "",
 ) -> list[str]:
-    """Labels for each keyword group that matches (same order as _FOCUS_GROUPS)."""
+    """Labels for each keyword group that matches (same order as YAML)."""
     blob = _combined_blob(title, company, description)
     if not blob.strip():
         return []
@@ -165,7 +91,7 @@ def count_focus_group_hits(title: str = "", company: str = "", description: str 
 
 
 def priority_from_focus_group_hits(hit_count: int) -> Literal["HIGH", "MEDIUM", "LOW"]:
-    """Map keyword-group hit count to priority (overrides LLM tier)."""
+    """Map keyword-group hit count to priority (sole source of HIGH/MEDIUM/LOW tiers)."""
     if hit_count <= 1:
         return "LOW"
     if hit_count <= 3:
@@ -178,7 +104,7 @@ def passes_focus_role_keywords(
     company: str = "",
     description: str = "",
 ) -> bool:
-    """Return True if combined text matches at least one focus role keyword cluster."""
+    """Return True if combined text matches at least one focus role keyword group."""
     return count_focus_group_hits(title, company, description) > 0
 
 
@@ -189,7 +115,7 @@ def merged_focus_and_llm_tags(
     description: str,
     max_tags: int = 16,
 ) -> list[str]:
-    """Keyword group labels first, then LLM tags, de-duplicated by case-insensitive string."""
+    """Keyword group labels first, then LLM tags, de-duplicated case-insensitively."""
     kw = focus_group_labels_matched(title, company, description)
     seen: set[str] = set()
     out: list[str] = []
@@ -212,10 +138,11 @@ def merge_llm_score_with_keyword_priority(
     title: str,
     company: str,
     description: str,
-) -> ScoreResult:
-    """Override LLM priority using keyword-group hits; annotate reason (tags merged in pipeline)."""
+) -> tuple[ScoreResult, Literal["HIGH", "MEDIUM", "LOW"]]:
+    """Set priority from keyword-group hits only; prefix reason with hit counts."""
     n = count_focus_group_hits(title, company, description)
     pri = priority_from_focus_group_hits(n)
     prefix = f"[{n}/{FOCUS_GROUP_TOTAL} groups] "
     new_reason = (prefix + (score.reason or "")).strip()[:1024]
-    return score.model_copy(update={"priority": pri, "reason": new_reason})
+    updated = score.model_copy(update={"reason": new_reason})
+    return updated, pri

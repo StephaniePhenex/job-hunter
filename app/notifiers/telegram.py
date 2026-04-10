@@ -1,6 +1,7 @@
 """Telegram Bot API notifications."""
 
 import logging
+import time
 from datetime import datetime, timezone
 from html import escape
 
@@ -49,17 +50,26 @@ def send_job_alert(db: Session, job: Job) -> bool:
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
-    try:
-        r = httpx.post(url, json=payload, timeout=30.0)
-        r.raise_for_status()
-        job.notified_at = datetime.now(timezone.utc)
-        db.add(job)
-        db.commit()
-        logger.info("Telegram notification sent for job id=%s", job.id)
-        return True
-    except Exception:
-        logger.exception("Telegram send failed for job id=%s", job.id)
-        return False
+    for attempt in range(2):
+        try:
+            r = httpx.post(url, json=payload, timeout=30.0)
+            r.raise_for_status()
+            job.notified_at = datetime.now(timezone.utc)
+            db.add(job)
+            db.commit()
+            logger.info("Telegram notification sent for job id=%s", job.id)
+            return True
+        except Exception:
+            if attempt == 0:
+                logger.warning(
+                    "Telegram send failed for job id=%s; retrying in 3s", job.id
+                )
+                time.sleep(3)
+            else:
+                logger.exception(
+                    "Telegram send failed for job id=%s after 2 attempts", job.id
+                )
+    return False
 
 
 def notify_eligible_jobs(db: Session, jobs: list[Job]) -> int:

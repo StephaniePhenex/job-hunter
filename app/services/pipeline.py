@@ -53,6 +53,11 @@ async def _collect_normalized() -> list[JobNormalized]:
     async def run_http(scraper: Any) -> None:
         try:
             jobs = await scraper.fetch_jobs()
+            if not jobs:
+                logger.warning(
+                    "HTTP scraper %s returned 0 jobs — source may be down or selector stale",
+                    getattr(scraper, "source", scraper),
+                )
             results.extend(jobs)
         except Exception:
             logger.exception("HTTP scraper failed: %s", getattr(scraper, "source", scraper))
@@ -70,11 +75,18 @@ async def _collect_normalized() -> list[JobNormalized]:
                     try:
                         jobs = scraper.fetch_jobs_with_browser(browser)
                         items.extend(jobs)
-                        logger.info(
-                            "Playwright scraper %s returned %s jobs",
-                            scraper.source,
-                            len(jobs),
-                        )
+                        if not jobs:
+                            logger.warning(
+                                "Playwright scraper %s returned 0 jobs — "
+                                "CSS selectors may be stale or site structure changed",
+                                scraper.source,
+                            )
+                        else:
+                            logger.info(
+                                "Playwright scraper %s returned %s jobs",
+                                scraper.source,
+                                len(jobs),
+                            )
                     except Exception:
                         logger.exception(
                             "Playwright scraper failed: %s", scraper.source
@@ -185,11 +197,11 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
     to_notify: list[Job] = []
 
     for (item, ch, dh), score in zip(to_insert, insert_scores):
-        score = merge_llm_score_with_keyword_priority(
+        scored, priority = merge_llm_score_with_keyword_priority(
             score, item.title, item.company, item.description
         )
         tags = merged_focus_and_llm_tags(
-            score.tags, item.title, item.company, item.description
+            scored.tags, item.title, item.company, item.description
         )
         job = Job(
             title=item.title,
@@ -202,9 +214,9 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
             content_hash=ch,
             description_hash=dh,
             is_updated=False,
-            match_score=score.match_score,
-            priority=score.priority,
-            reason=score.reason,
+            match_score=scored.match_score,
+            priority=priority,
+            reason=scored.reason,
             tags=tags,
             # Restore previous notified_at so we don't re-alert on every scan
             notified_at=notified_snapshot.get(ch),
@@ -216,7 +228,7 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
         stats["scored"] += 1
 
     for (row, item, dh), score in zip(to_update, update_scores):
-        score = merge_llm_score_with_keyword_priority(
+        scored, priority = merge_llm_score_with_keyword_priority(
             score, item.title, item.company, item.description
         )
         row.description = item.description
@@ -228,11 +240,11 @@ def upsert_and_score_batch(db: Session, items: list[JobNormalized]) -> dict[str,
         row.posted_at = item.posted_at
         row.is_updated = True
         row.updated_at = datetime.now(timezone.utc)
-        row.match_score = score.match_score
-        row.priority = score.priority
-        row.reason = score.reason
+        row.match_score = scored.match_score
+        row.priority = priority
+        row.reason = scored.reason
         row.tags = merged_focus_and_llm_tags(
-            score.tags, item.title, item.company, item.description
+            scored.tags, item.title, item.company, item.description
         )
         # Reset so updated high-signal jobs can alert again
         row.notified_at = None

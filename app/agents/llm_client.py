@@ -3,9 +3,7 @@
 import json
 import logging
 import re
-from typing import Literal
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.profile import UserProfile
 from app.core.config import get_settings
@@ -17,19 +15,21 @@ _TAG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,31}$")
 _SYSTEM_PROMPT = (
     "You are a recruiting assistant. Score how well an internship matches the user profile. "
     "Respond with a single JSON object only, no markdown, with keys: "
-    "match_score (number from 0 to 1), priority (string HIGH or MEDIUM or LOW), "
+    "match_score (number from 0 to 1), "
     "reason (short string), "
     "tags (array of strings, max 8): choose zero or more topic labels from this set when relevant: "
     "web3, backend, frontend, data, mobile, devops, media, product, research, other. "
-    "Use lowercase slug form (e.g. backend). Omit tags if none apply."
+    "Use lowercase slug form (e.g. backend). Omit tags if none apply. "
+    "Do not include priority or importance tiers; relevance ranking is applied separately."
 )
 
 
 class ScoreResult(BaseModel):
-    """Structured LLM output."""
+    """Structured LLM output (match/reason/tags only). Priority is computed in-app from keywords."""
+
+    model_config = ConfigDict(extra="ignore")
 
     match_score: float = Field(ge=0.0, le=1.0)
-    priority: Literal["HIGH", "MEDIUM", "LOW"]
     reason: str = Field(max_length=1024)
     tags: list[str] = Field(
         default_factory=list,
@@ -56,7 +56,6 @@ class ScoreResult(BaseModel):
 def _no_key_result() -> ScoreResult:
     return ScoreResult(
         match_score=0.0,
-        priority="LOW",
         reason="No LLM API key configured (set GEMINI_API_KEY or OPENAI_API_KEY).",
         tags=[],
     )
@@ -66,6 +65,7 @@ def _parse_score_json(text: str) -> ScoreResult:
     data = json.loads(text)
     if "tags" not in data:
         data["tags"] = []
+    # Legacy LLM responses may still include priority; ignored via model_config extra="ignore".
     return ScoreResult.model_validate(data)
 
 
@@ -99,6 +99,7 @@ def _score_gemini(
             temperature=0.2,
             response_mime_type="application/json",
         ),
+        request_options={"timeout": 60},
     )
     text = (resp.text or "").strip() or "{}"
     return _parse_score_json(text)
@@ -113,7 +114,7 @@ def _score_openai(
     from openai import OpenAI
 
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key, timeout=60.0)
     user_payload = {
         "profile": profile.model_dump(),
         "job": {
@@ -148,7 +149,6 @@ def score_job(description: str, title: str, company: str, profile: UserProfile) 
             logger.exception("Gemini scoring failed; using LOW fallback")
             return ScoreResult(
                 match_score=0.0,
-                priority="LOW",
                 reason="Scoring failed; check logs.",
                 tags=[],
             )
@@ -160,7 +160,6 @@ def score_job(description: str, title: str, company: str, profile: UserProfile) 
             logger.exception("OpenAI scoring failed; using LOW fallback")
             return ScoreResult(
                 match_score=0.0,
-                priority="LOW",
                 reason="Scoring failed; check logs.",
                 tags=[],
             )
