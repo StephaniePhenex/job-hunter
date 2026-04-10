@@ -94,6 +94,14 @@ def _scrape_eluta_with_page(page) -> list[JobNormalized]:
     seen_urls: set[str] = set()
     posted_default = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    # Warm-up: visit homepage first so we arrive at the listing page with an
+    # established session/cookies, reducing bot-detection risk.
+    try:
+        page.goto("https://www.eluta.ca/", wait_until="domcontentloaded")
+        page.wait_for_timeout(random.randint(2500, 4000))
+    except Exception:
+        logger.debug("Eluta: homepage warm-up failed; proceeding anyway")
+
     for pnum in range(1, max_pages + 1):
         if len(collected) >= cap:
             break
@@ -104,6 +112,15 @@ def _scrape_eluta_with_page(page) -> list[JobNormalized]:
             html = page.content()
         except Exception:
             logger.exception("Eluta page.goto failed: %s", url)
+            break
+
+        # Detect bot-challenge page (IP-based rate limiting by Eluta).
+        page_title = page.title().lower()
+        if "user verification" in page_title or "are you a human" in html.lower():
+            logger.warning(
+                "Eluta: bot-detection challenge triggered (IP may be rate-limited). "
+                "Try again later or set ELUTA_ENABLED=false to skip this source."
+            )
             break
 
         rows = parse_organic_jobs(html)

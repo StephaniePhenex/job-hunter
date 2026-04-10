@@ -8,6 +8,37 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+# Match frontend Canada filter: 2-letter region codes (US states + DC vs Canadian provinces).
+_US_STATE_CODES = frozenset(
+    "AL AK AZ AR CA CO CT DE FL GA HI IA ID IL IN KS KY LA MA MD ME MI MN MO MS MT "
+    "NC ND NE NH NJ NM NV NY OH OK OR PA RI SC SD TN TX UT VA VT WA WI WV WY DC".split()
+)
+_CA_PROV_CODES = frozenset("ON BC AB QC MB SK NS NB PE NL YT NT NU".split())
+
+
+def _normalize_mangled_location_text(s: str) -> str:
+    """Insert spaces for glued tokens (camelCase, ', FLSouth', ', GANew York', ', NYRemote')."""
+    if not s:
+        return s
+    t = re.sub(r"([a-z])([A-Z])", r"\1 \2", s)
+    glued = re.compile(r",\s*([A-Za-z]{2})([A-Z][a-z]+)")
+
+    def _fix_after_comma_code(m: re.Match[str]) -> str:
+        code, word = m.group(1), m.group(2)
+        c = code.upper()
+        if c in _CA_PROV_CODES:
+            return m.group(0)
+        if c in _US_STATE_CODES:
+            return f", {c} {word}"
+        return m.group(0)
+
+    for _ in range(16):
+        next_t = glued.sub(_fix_after_comma_code, t)
+        if next_t == t:
+            break
+        t = next_t
+    return t
+
 
 def _join_address(addr: dict[str, Any]) -> str:
     if not isinstance(addr, dict):
@@ -45,11 +76,23 @@ def _location_from_jobposting(obj: dict[str, Any]) -> str:
     else:
         one_block(loc)
 
-    # Prefer "City, Region" over generic "Canada"
+    best: list[str] = []
+    seen: set[str] = set()
     for c in candidates:
-        if len(c) > 3 and c.lower() not in ("canada", "united states", "usa"):
-            return c
-    return candidates[0] if candidates else ""
+        raw = str(c).strip()
+        if not raw:
+            continue
+        low = raw.lower()
+        if len(raw) > 3 and low not in ("canada", "united states", "usa"):
+            key = re.sub(r"\s+", " ", low)
+            if key not in seen:
+                seen.add(key)
+                best.append(raw[:512])
+    if best:
+        return _normalize_mangled_location_text("; ".join(best)[:512])
+    if candidates:
+        return _normalize_mangled_location_text(str(candidates[0]).strip()[:512])
+    return ""
 
 
 def _walk_for_jobposting(obj: Any, out: list[dict[str, Any]]) -> None:
@@ -95,13 +138,13 @@ def _regex_fallback(html: str) -> str:
         html,
     )
     if m:
-        return re.sub(r"\s+", " ", m.group(1)).strip()[:512]
+        return _normalize_mangled_location_text(re.sub(r"\s+", " ", m.group(1)).strip()[:512])
     m = re.search(
         r"(?i)Location\s*:\s*([^\n<]{3,200})",
         html,
     )
     if m:
-        return re.sub(r"\s+", " ", m.group(1)).strip()[:512]
+        return _normalize_mangled_location_text(re.sub(r"\s+", " ", m.group(1)).strip()[:512])
     return ""
 
 

@@ -66,6 +66,22 @@ def test_accepts_software_engineer_title() -> None:
     )
 
 
+def test_accepts_fuzzy_software_developer_titles() -> None:
+    """Synonym phrases (engineering/developer/intern) must pass the same gate."""
+    cases = [
+        ("Software Engineering Intern", "", ""),
+        ("Software Developer Intern", "", ""),
+        ("Junior Software Developer", "", ""),
+        ("Full Stack Developer", "", ""),
+        ("Full-Stack Developer Intern", "", ""),
+        ("Developer Intern", "", "General internship building internal tools."),
+    ]
+    for title, company, desc in cases:
+        assert passes_focus_role_keywords(
+            title=title, company=company, description=desc
+        ), f"expected pass: {title!r}"
+
+
 def test_accepts_technical_content_engineer() -> None:
     assert passes_focus_role_keywords(
         title="Technical Content Engineer",

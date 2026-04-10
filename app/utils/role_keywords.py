@@ -48,8 +48,11 @@ def _load_focus_groups(path: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
         terms: list[str] = entry.get("terms", [])
 
         if raw_regex:
-            # Strip YAML literal/folded scalar newlines (> or |) used for readability
+            # YAML >- folds newlines to spaces, producing "alt1| alt2" with spurious spaces
+            # around the pipe operators. Collapse all whitespace first, then strip spaces
+            # around | so alternations compile correctly regardless of YAML line wrapping.
             pattern_str = re.sub(r"\s+", " ", raw_regex).strip()
+            pattern_str = re.sub(r"\s*\|\s*", "|", pattern_str)
         elif terms:
             pattern_str = "|".join(
                 r"\b" + re.escape(t.strip()) + r"\b" for t in terms if t.strip()

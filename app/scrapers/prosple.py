@@ -29,6 +29,14 @@ def _location_from_listing_card(text: str) -> str:
     return ""
 
 
+def _company_from_prosple_url(href: str) -> str:
+    """Extract company name from URL slug: /graduate-employers/{slug}/jobs-internships/..."""
+    m = re.search(r"/graduate-employers/([^/]+)/", href)
+    if not m:
+        return ""
+    return m.group(1).replace("-", " ").title()
+
+
 def _parse_anchor(a) -> JobNormalized | None:
     """Extract one normalized job from a Prosple listing anchor element."""
     href = a.get_attribute("href") or ""
@@ -42,8 +50,8 @@ def _parse_anchor(a) -> JobNormalized | None:
 
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     title = lines[0][:512] if lines else ""
-    # Second non-empty line is typically the company name on Prosple cards
-    company = lines[1][:512] if len(lines) > 1 else ""
+    # Card text no longer includes company name; extract from URL slug instead.
+    company = _company_from_prosple_url(href)
     location = _location_from_listing_card(text) or "Canada"
 
     return JobNormalized(

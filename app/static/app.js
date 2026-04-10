@@ -19,9 +19,46 @@ const US_STATE_CODES = new Set([
 
 const CA_PROV_CODES = new Set(["ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "PE", "NL", "YT", "NT", "NU"]);
 
+/** US state / DC as full words (longer phrases first for alternation). */
+const US_STATE_NAMES_RE =
+  /\b(district\s+of\s+columbia|north\s+carolina|north\s+dakota|new\s+hampshire|new\s+jersey|new\s+mexico|new\s+york|rhode\s+island|south\s+carolina|south\s+dakota|west\s+virginia|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|ohio|oklahoma|oregon|pennsylvania|tennessee|texas|utah|vermont|virginia|washington|wisconsin|wyoming)\b/i;
+
 /** Title/location/description suggest remote or hybrid (US office may still hire Canada). */
 function hasRemoteOrHybridSignal(hay) {
   return /\bremote\b|\bhybrid\b|work\s+from\s+home|wfh\b|distributed\s+team/i.test(hay);
+}
+
+/**
+ * Split scraper-glued tokens: camelCase, "WashingtonTexas…", ", GANew York", ", NYRemote".
+ * Runs comma+US-state fixes repeatedly so chained blobs normalize in one pass.
+ */
+function normalizeGeoText(s) {
+  if (!s) return s;
+  let t = s.replace(/([a-z])([A-Z])/g, "$1 $2");
+  const gluedAfterState = /,\s*([A-Za-z]{2})([A-Z][a-z]+)/g;
+  for (let i = 0; i < 16; i++) {
+    const next = t.replace(gluedAfterState, (match, code, word) => {
+      const c = code.toUpperCase();
+      if (CA_PROV_CODES.has(c)) return match;
+      if (US_STATE_CODES.has(c)) return `, ${c} ${word}`;
+      return match;
+    });
+    if (next === t) break;
+    t = next;
+  }
+  return t;
+}
+
+/** Any ", ST" in text where ST is a US state / DC code (not a Canadian province). */
+function hasInlineUsStateCode(text) {
+  const re = /,\s*([A-Za-z]{2})\b/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const c = m[1].toUpperCase();
+    if (CA_PROV_CODES.has(c)) continue;
+    if (US_STATE_CODES.has(c)) return true;
+  }
+  return false;
 }
 
 /**
@@ -30,17 +67,33 @@ function hasRemoteOrHybridSignal(hay) {
  */
 function isExcludedNonCanada(job) {
   const loc = (job.location || "").trim();
+  const locNorm = normalizeGeoText(loc);
   const title = job.title || "";
   const desc = job.description || "";
-  const hay = `${loc}\n${title}\n${desc}`.toLowerCase();
-  const hayFull = `${loc}\n${title}\n${desc}`;
+  const hay = `${locNorm}\n${title}\n${desc}`.toLowerCase();
+  const hayFull = `${locNorm}\n${title}\n${desc}`;
+  const geoFocus = `${locNorm}\n${title}`;
+  const geoFocusLower = geoFocus.toLowerCase();
 
-  const canadaHint =
+  const provinceLineHint = /,\s*(on|bc|ab|qc|mb|sk|ns|nb|pe|nl|yt|nt|nu)\b/i.test(hay);
+
+  const canadaUnambiguous =
     /\bcanada\b|\bcanadian\b/i.test(hay) ||
-    /toronto|montreal|vancouver|calgary|ottawa|edmonton|winnipeg|mississauga|waterloo|kitchener|hamilton|victoria|halifax|saskatoon|regina|gatineau|laval|burnaby|surrey|kelowna|london\s*,\s*on|markham|oakville|windsor|quebec city|british columbia|\bontario\b|manitoba|saskatchewan|nova scotia|new brunswick|newfoundland|prince edward|northwest territor|yukon|nunavut/i.test(
+    /toronto|montreal|vancouver|calgary|ottawa|edmonton|winnipeg|mississauga|waterloo|kitchener|halifax|saskatoon|regina|gatineau|laval|burnaby|surrey|kelowna|london\s*,\s*on|markham|oakville|windsor|quebec city|british columbia|\bontario\b|manitoba|saskatchewan|nova scotia|new brunswick|newfoundland|prince edward|northwest territor|yukon|nunavut/i.test(
       hay,
     ) ||
-    /,\s*(on|bc|ab|qc|mb|sk|ns|nb|pe|nl|yt|nt|nu)\b/i.test(hay);
+    provinceLineHint;
+
+  const ambiguousCity = /\bvictoria\b/i.test(hay) || /\bhamilton\b/i.test(hay);
+  const canadaHint =
+    canadaUnambiguous ||
+    (ambiguousCity &&
+      (/\bcanada\b|\bcanadian\b/i.test(hay) ||
+        /\b(bc|british columbia|alberta|quebec|manitoba|saskatchewan|nova scotia|new brunswick)\b/i.test(hay) ||
+        /\bontario\b/i.test(hay) ||
+        provinceLineHint ||
+        /victoria,\s*bc\b/i.test(hay) ||
+        /hamilton,\s*on\b/i.test(hay)));
 
   if (canadaHint) return false;
 
@@ -56,7 +109,7 @@ function isExcludedNonCanada(job) {
   }
 
   const tailState = /,\s*([A-Za-z]{2})\s*$/;
-  for (const part of [loc, title]) {
+  for (const part of [locNorm, title]) {
     const m = part.match(tailState);
     if (m) {
       const code = m[1].toUpperCase();
@@ -65,16 +118,21 @@ function isExcludedNonCanada(job) {
     }
   }
 
+  // US city/state tokens: do not let "remote/hybrid" keep rows that still name USA or US subdivisions.
+  if (hasInlineUsStateCode(geoFocus)) return true;
+
+  if (US_STATE_NAMES_RE.test(geoFocusLower)) return true;
+
   if (
     /\b(nyc\b|new york,\s*ny|manhattan|brooklyn,\s*ny|silicon valley|san francisco,\s*ca|los angeles,\s*ca|chicago,\s*il|boston,\s*ma|seattle,\s*wa|austin,\s*tx|miami,\s*fl|atlanta,\s*ga|denver,\s*co|portland,\s*or|philadelphia,\s*pa|houston,\s*tx)\b/i.test(
       hay,
     )
   ) {
-    if (hasRemoteOrHybridSignal(hayFull)) return false;
     return true;
   }
 
-  if (/\b(united states|u\.s\.a\.|usa\b)(?!\s*and canada)/i.test(hay)) return true;
+  if (/\bremote\s+in\s+(the\s+)?u\.?s\.?a\.?\b|\bremote\s+in\s+usa\b/i.test(hay)) return true;
+  if (/\b(united states|u\.s\.a\.|usa\b)(?!\s+and\s+canada)/i.test(hay)) return true;
 
   if (
     /\b(us\s+only|us\s+citizen|authorized\s+to\s+work\s+in\s+the\s+u\.?s\.?|based\s+in\s+the\s+u\.?s\.?|on-?site\s+.*\b(united states|u\.s\.)\b)/i.test(
@@ -98,6 +156,26 @@ function escAttr(s) {
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;");
+}
+
+/**
+ * Mirrors SQL intern boost in app/api/routes/jobs.py (_intern_role_boost).
+ * Row highlight is for intern-style titles only — not "applied".
+ */
+function titleLooksIntern(title) {
+  if (title == null || !String(title).trim()) return false;
+  const t = String(title).toLowerCase();
+  return (
+    t.includes("internship") ||
+    t.includes(" intern") ||
+    t.startsWith("intern ") ||
+    t.startsWith("intern-") ||
+    t.includes("co-op") ||
+    t.includes("coop") ||
+    t.includes(" co op ") ||
+    t.includes("student placement") ||
+    t.includes("summer student")
+  );
 }
 
 function priorityClass(p) {
@@ -185,8 +263,9 @@ async function loadTable() {
 /** Show e.g. "SF · Remote" when location is a US shorthand/metro and copy mentions remote/hybrid. */
 function formatLocationCell(j) {
   const raw = (j.location || "").trim();
-  const base = raw || "—";
-  const hayFull = `${j.location || ""}\n${j.title || ""}\n${j.description || ""}`;
+  const displayLoc = raw ? normalizeGeoText(raw) : "";
+  const base = displayLoc || "—";
+  const hayFull = `${displayLoc}\n${j.title || ""}\n${j.description || ""}`;
   const hay = hayFull.toLowerCase();
   const shortUs =
     /^\s*sf\s*$/i.test(raw) ||
@@ -208,8 +287,10 @@ function formatLocationCell(j) {
 function rowHtml(j) {
   const applied = Boolean(j.applied_at);
   const location = formatLocationCell(j);
+  const internRow = titleLooksIntern(j.title);
+  const rowClass = internRow ? ' class="job-row job-row--intern"' : ' class="job-row"';
   return `
-    <tr data-id="${j.id}">
+    <tr data-id="${j.id}"${rowClass}>
       <td>
         <button type="button" class="btn btn--small btn--ghost" data-applied-toggle data-id="${j.id}" data-applied="${applied ? "1" : "0"}"
           aria-pressed="${applied}" title="Toggle applied">

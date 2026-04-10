@@ -25,10 +25,21 @@ logger = logging.getLogger(__name__)
 
 _TALENTEGG_ORIGIN = "https://talentegg.ca"
 
-# Server returns 500 for many legacy routes; this listing is verified 200 + job anchors.
-_FALLBACK_LIST_URL = "https://talentegg.ca/latest-jobs"
+# Fallback chain: try each URL in order until one returns job anchors.
+# /latest-jobs is now flooded by Job Bank listings (filtered via _JOB_BANK_PATH).
+# The keyword URL surfaces actual employer-posted tech jobs when available.
+_FALLBACK_URLS = [
+    "https://talentegg.ca/latest-jobs",
+    "https://talentegg.ca/find-a-job/keyword/developer/",
+    "https://talentegg.ca/find-a-job/keyword/software/",
+]
+_FALLBACK_LIST_URL = _FALLBACK_URLS[0]  # kept for backward-compat log messages
 
 _JOB_DETAIL_PATH = re.compile(r"/employer/[^/]+/jobs/.+", re.IGNORECASE)
+
+# Job Bank is the Government of Canada's generic job board, syndicated onto TalentEgg.
+# It floods /latest-jobs with unrelated roles (construction, food service, etc.).
+_JOB_BANK_PATH = re.compile(r"/employer/job-bank/", re.IGNORECASE)
 
 _CA_PROVINCE = re.compile(
     r"(Ontario|Quebec|British Columbia|Alberta|Manitoba|Saskatchewan|Nova Scotia|"
@@ -128,6 +139,10 @@ def _parse_anchor(a) -> JobNormalized | None:
         return None
     if not _JOB_DETAIL_PATH.search(href):
         return None
+    # Skip Government of Canada Job Bank listings — they syndicate thousands of
+    # unrelated roles (construction, food service, etc.) onto TalentEgg.
+    if _JOB_BANK_PATH.search(href):
+        return None
 
     card_text = _card_inner_text(a)
     lines = [ln.strip() for ln in card_text.splitlines() if ln.strip()]
@@ -140,11 +155,12 @@ def _parse_anchor(a) -> JobNormalized | None:
         logger.debug("TalentEgg skip (non-Canada location): %s | %s", title[:60], location_line[:80])
         return None
 
+    # Card text no longer includes company name; extract from URL slug instead.
+    # e.g. /employer/shopify-inc/jobs/... → "Shopify Inc"
     company = ""
-    if len(lines) >= 2:
-        maybe = lines[1]
-        if maybe != location_line and "," not in maybe and len(maybe) < 120:
-            company = maybe[:512]
+    m = re.search(r"/employer/([^/]+)/jobs/", href)
+    if m:
+        company = m.group(1).replace("-", " ").title()[:512]
 
     loc_display = location_line or "Canada"
 
@@ -192,14 +208,16 @@ def _scrape_with_page(page) -> list[JobNormalized]:
     load(primary)
     anchors = _query_job_anchors(page)
 
-    if not anchors and primary.rstrip("/") != _FALLBACK_LIST_URL.rstrip("/"):
-        logger.warning(
-            "TalentEgg: 0 job links from %s (often HTTP 500 on legacy paths); trying %s",
-            primary,
-            _FALLBACK_LIST_URL,
-        )
-        load(_FALLBACK_LIST_URL)
-        anchors = _query_job_anchors(page)
+    # Walk the fallback chain until we get job links.
+    if not anchors:
+        for fallback in _FALLBACK_URLS:
+            if fallback.rstrip("/") == primary.rstrip("/"):
+                continue
+            logger.warning("TalentEgg: 0 job links from %s; trying %s", primary, fallback)
+            load(fallback)
+            anchors = _query_job_anchors(page)
+            if anchors:
+                break
 
     out: list[JobNormalized] = []
     seen_urls: set[str] = set()

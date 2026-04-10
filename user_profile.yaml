@@ -11,11 +11,12 @@ profile:
   location_focus: "Canada"          # Geographic preference
   term: "Fall 2026 internship"      # Internship term you're targeting
   interests:
-    - "Web3 / blockchain"
-    - "AI products and tooling"
-    - "Full-stack software engineering"
-    - "Media / content technology"
-    - "Creative tech and developer tools"
+    - "Product-minded / design-adjacent engineering"
+    - "Full-stack AI, LLM, and SaaS applications"
+    - "Media, content technology, and speech/audio"
+    - "Web3, digital assets, and creative technology"
+    - "DevRel, technical content, and developer education"
+    - "Robotics, perception, and computer vision"
 
 # ------------------------------------------------------------
 # Keywords: control which jobs pass the pre-LLM filter.
@@ -24,108 +25,255 @@ profile:
 #
 # Each group has:
 #   label  — display name (shown as tag in the UI)
-#   terms  — list of plain-text phrases (case-insensitive substring match)
-#   regex  — (optional) raw regex for advanced patterns; overrides `terms`
+#   terms  — list of plain-text phrases (compiled with word boundaries)
+#   regex  — (optional) raw regex pattern; overrides `terms`
 # ------------------------------------------------------------
 keywords:
+  # --- Core: Product-Minded Engineering (startup-friendly) ---
+  - label: "Design Engineer"
+    terms:
+      - "design engineer"
+      - "design technologist"
+      - "design systems engineer"
+      - "product design engineer"
+      - "frontend engineer"
+      - "front-end engineer"
+      - "ui engineer"
+      - "ui developer"
+      - "ux developer"
+      - "product-minded engineer"
+      - "experience engineer"
+
+  - label: "Full-stack AI/SaaS"
+    regex: >-
+      full[\s-]*stack.{0,80}(ai|saas|llm|generative)|
+      (ai|saas|llm|generative).{0,50}full[\s-]*stack|
+      ai\s+application\s+developer|
+      llm\s+engineer|llm\s+developer|
+      applied\s+ai\s+engineer|applied\s+ai\s+developer|
+      ai\s+software\s+engineer|ai\s+product\s+engineer|
+      generative\s+ai\s+engineer|generative\s+ai\s+developer|
+      saas\s+engineer|saas\s+developer
+
+  - label: "Product Engineer"
+    terms:
+      - "product engineer"
+      - "product engineering"
+      - "product software engineer"
+      - "technical product engineer"
+      - "product builder"
+      - "founding engineer"
+      - "founder engineer"
+      # Strong fit for indie-shipping / 0-to-1 backgrounds
+      - "founder's associate intern"
+      - "founder associate intern"
+      - "founders associate intern"
+
+  # --- Vertical: Media, Content & AI ---
+  - label: "Media Technologist"
+    terms:
+      - "media engineer"
+      - "media developer"
+      - "broadcast engineer"
+      - "video engineer"
+      - "audio engineering"
+      - "audio engineer"
+      - "audio developer"
+      - "speech ai"
+      - "speech engineer"
+      - "voice ai"
+      - "content technology"
+      - "content engineer"
+      - "streaming engineer"
+      - "streaming developer"
+      - "video streaming engineer"
+
+  - label: "Creative Technologist"
+    terms:
+      - "creative technologist"
+      - "creative developer"
+      - "creative technology"
+      - "creative coder"
+      - "multimedia developer"
+      - "multimedia engineer"
+      - "interactive media engineer"
+      - "interactive developer"
+      - "experiential technologist"
+
+  # --- Vertical: Web3 & Digital Assets ---
+  - label: "Web3/DApp"
+    terms:
+      - "web3"
+      - "web3 developer"
+      - "web3 engineer"
+      - "web3 intern"
+      - "dapp developer"
+      - "dapp engineer"
+      - "blockchain developer"
+      - "blockchain engineer"
+      - "smart contract developer"
+      - "solidity developer"
+      - "defi developer"
+      - "crypto developer"
+      - "crypto engineer"
+      - "digital assets engineer"
+      - "digital asset developer"
+
+  - label: "Web3 full-stack"
+    regex: >-
+      web3.{0,80}full[\s-]*stack|full[\s-]*stack.{0,80}web3|
+      blockchain.{0,80}full[\s-]*stack|full[\s-]*stack.{0,80}blockchain|
+      defi.{0,60}(full[\s-]*stack|engineer|developer)
+
+  # --- DevRel & Education ---
+  - label: "Developer Relations"
+    terms:
+      - "devrel"
+      - "developer advocate"
+      - "developer advocacy"
+      - "dev advocate"
+      - "technical evangelist"
+      - "technical advocate"
+      - "technical content engineer"
+      - "technical content developer"
+      - "developer education"
+      - "developer relations"
+      - "developer programs engineer"
+      - "api advocate"
+      - "platform advocate"
+
+  # --- Robotics & Computer Vision ---
+  - label: "Robotics/CV"
+    terms:
+      - "robotics software intern"
+      - "robotics software engineer"
+      - "robotics intern"
+      - "robotics engineer"
+      - "computer vision intern"
+      - "computer vision engineer"
+      - "cv engineer"
+      - "ros2"
+      - "ros engineer"
+      - "perception engineer"
+      - "perception software engineer"
+      - "autonomy engineer"
+      - "autonomous systems engineer"
+      - "slam engineer"
+
+  # --- Target industry (Vancouver / Canada tilt) ---
+  - label: "Target Industry"
+    regex: >-
+      (edtech|fintech|adtech|healthtech|proptech|cleantech|insurtech|
+      gaming\s+studio|e-commerce|ecommerce).{0,20}intern
+
+  # --- Broader catch-all (software / dev intern phrasing — synonyms, not only "engineer") ---
   - label: "Software engineer"
     terms:
       - "software engineer"
+      - "software engineering"
+      - "software developer"
+      - "developer intern"
 
   - label: "Full-stack engineer"
     terms:
       - "full-stack engineer"
       - "fullstack engineer"
       - "full stack engineer"
-
-  - label: "Full-stack AI/SaaS"
-    regex: >-
-      full[\s-]*stack.{0,80}(ai|saas|sa\s*a\s*s)|\(ai\s*/\s*saas\)|
-      (ai|saas).{0,50}full[\s-]*stack|full[\s-]*stack\s+engineer.{0,60}(ai|saas)
+      - "full-stack developer"
+      - "fullstack developer"
+      - "full stack developer"
 
   - label: "AI builder"
     terms:
       - "ai builder"
       - "artificial intelligence builder"
-
-  - label: "Product engineer"
-    terms:
-      - "product engineer"
-
-  - label: "Product builder"
-    terms:
-      - "product builder"
+      - "ai engineer"
+      - "artificial intelligence engineer"
+      - "ai product engineer"
+      - "generative ai engineer"
+      - "generative ai developer"
 
   - label: "Creator tools"
     terms:
       - "creator tools"
-
-  - label: "Web3"
-    terms:
-      - "web3"
-
-  - label: "Web3 full-stack"
-    regex: >-
-      web3.{0,80}full[\s-]*stack|full[\s-]*stack.{0,80}web3
-
-  - label: "DevRel"
-    terms:
-      - "devrel"
-      - "developer relations"
+      - "creator platform"
+      - "creator economy"
+      - "tools for creators"
+      - "build for creators"
 
   - label: "UX engineer"
     terms:
       - "ux engineer"
       - "u.x. engineer"
+      - "ux developer"
+      - "user experience engineer"
+      - "product ux engineer"
+      - "design systems engineer"
 
   - label: "Front-end / UI"
     terms:
       - "front-end engineer"
+      - "front end engineer"
       - "frontend engineer"
       - "frontend developer"
+      - "front-end developer"
+      - "front end developer"
+      - "web developer"
+      - "web application developer"
+      - "javascript engineer"
+      - "react developer"
+      - "react engineer"
 
   - label: "MLOps / AI implementation"
     terms:
       - "mlops"
       - "ml ops"
       - "ai implementation engineer"
-
-  - label: "Technical Content Engineer"
-    terms:
-      - "technical content engineer"
-
-  - label: "Creative technologist"
-    terms:
-      - "creative technologist"
-
-  - label: "Media engineer"
-    terms:
-      - "media engineer"
+      - "ai implementation"
+      - "machine learning engineer"
+      - "machine learning infrastructure"
+      - "ml engineer"
+      - "ml infrastructure engineer"
+      - "ml platform engineer"
+      - "applied scientist"
 
   - label: "Architect (media)"
     regex: >-
-      solution\s*architect.{0,120}(media|entertainment)|
-      (media\s*&\s*entertainment|media\s+and\s+entertainment).{0,80}solution\s*architect
+      solution\s*architect.{0,120}(media|entertainment|broadcast|streaming)|
+      (media\s*&\s*entertainment|media\s+and\s+entertainment).{0,80}solution\s*architect|
+      (media|broadcast|streaming).{0,50}solution\s*architect|
+      solutions?\s*architect.{0,100}(media|entertainment|ott|broadcast)
 
   - label: "Digital assets"
     regex: >-
-      digital\s*assets?\s*develop\w*|develop\w*.{0,30}digital\s*assets?
+      digital\s*assets?\s*develop\w*|develop\w*.{0,30}digital\s*assets?|
+      tokenization.{0,40}(engineer|developer)|
+      (nft|token).{0,25}(engineer|developer|intern)
 
   - label: "Animation / VFX (games)"
     regex: >-
       \bvfx\b|
       \banimation\b.{0,70}(games?|intern|studio|sledgehammer)|
       sledgehammer\s+games|
-      intern(ship)?.{0,30}\b(vfx|animation)\b|\b(vfx|animation)\b.{0,40}intern
+      intern(ship)?.{0,30}\b(vfx|animation)\b|\b(vfx|animation)\b.{0,40}intern|
+      \bgame\s+development\b.{0,60}\bintern(ship)?\b|
+      \bintern(ship)?.{0,60}\bgame\s+development\b|
+      \bvideo\s+game\b.{0,50}\bintern(ship)?\b
 
   - label: "Digital marketing / Journalism"
     regex: >-
       journalism\s+and\s+digital\s+marketing|
       \bdigital\s+marketing\b.{0,100}\bintern(ship)?\b|
       \bintern(ship)?.{0,100}\bdigital\s+marketing\b|
-      marketing,\s*rpm\s+internship
+      marketing,\s*rpm\s+internship|
+      \bjournalism\b.{0,80}\bintern(ship)?\b|
+      \bintern(ship)?.{0,80}\bjournalism\b|
+      \bcommunications\b.{0,60}\bjournalism\b.{0,60}\bintern(ship)?\b|
+      \bdigital\s+storytelling\b.{0,80}\bintern(ship)?\b
 
   - label: "Electrical engineering"
     regex: >-
       \belectrical\s+engineering\b.{0,50}\bintern(ship)?\b|
-      \bintern(ship)?.{0,50}\belectrical\s+engineering\b
+      \bintern(ship)?.{0,50}\belectrical\s+engineering\b|
+      \belectrical\s+engineer\b.{0,50}\bintern(ship)?\b|
+      \bintern(ship)?.{0,50}\belectrical\s+engineer\b

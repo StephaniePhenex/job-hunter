@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # README can contain thousands of rows; cap per run to control LLM cost/latency.
     github_internships_max_rows: int = 200
     prosple_search_url: str = Field(
-        default="https://ca.prosple.com/search-jobs?keywords=internship&order_by=relevance",
+        default="https://ca.prosple.com/search-jobs?keywords=software+developer&order_by=relevance",
     )
     talentegg_internships_url: str = Field(
         default="https://talentegg.ca/latest-jobs",

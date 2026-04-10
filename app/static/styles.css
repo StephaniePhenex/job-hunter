@@ -206,6 +206,15 @@ body {
   background: rgba(91, 159, 212, 0.06);
 }
 
+/* Intern / co-op style titles - very light mint; matches API sort heuristics */
+.data-table tbody tr.job-row--intern td {
+  background-color: #f6fcfa;
+}
+
+.data-table tbody tr.job-row--intern:hover td {
+  background-color: #eef8f3;
+}
+
 .data-table td.empty {
   text-align: center;
   color: var(--text-muted);
