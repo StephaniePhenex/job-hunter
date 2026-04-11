@@ -8,7 +8,7 @@ Production-minded MVP: aggregate internship postings from multiple sources, dedu
 - **Pipeline**: scrape → normalize → **focus role keyword filter** (from [`user_profile.yaml`](user_profile.yaml), compiled in `app/utils/role_keywords.py`) → hash dedupe → **Gemini** (or OpenAI) scoring (`match_score`, `reason`, `tags` only; **priority** is keyword-derived) → Telegram notifications
 - **Scheduler**: APScheduler runs the full pipeline every **6 hours** (configurable)
 - **API**: `GET /jobs`, `GET /jobs/high-priority`, `POST /run-scan` or `POST /jobs/run-scan`, `GET /scan-status` or `GET /jobs/scan-status`
-- **Web dashboard** at `/` (static HTML/JS): table, filters, run-scan, **`applied_at`** with `PATCH /jobs/{id}/applied`; client loads **all pages** of `/jobs` so the full result set is available (scroll the table)
+- **Web dashboard** at `/` (static HTML/JS): table, filters, run-scan, **`applied_at`** with `PATCH /jobs/{id}/applied`; client loads **all pages** of `/jobs` (or `/jobs/high-priority` when **High signal** is on) so the full result set is available (scroll the table)
 
 ## Why each source helps you find jobs
 
@@ -28,6 +28,28 @@ Each feed answers a different “where do postings actually show up?” problem.
 - **Python 3.11+**
 - **Playwright** with **Chromium** (installed after dependencies; used for Prosple, TalentEgg, Eluta)
 - Optional: **Google Gemini** or **OpenAI** API key for LLM scoring; **Telegram** bot for alerts
+
+## Local deploy (what to do end-to-end)
+
+This is the practical checklist behind “clone, configure, run.” The **step-by-step commands** are in [Local installation (detailed)](#local-installation-detailed) below.
+
+1. **Install Python dependencies**  
+   Use **Python 3.11+**, create and activate a virtual environment, then `pip install -r requirements.txt` (see sections 2–3 there).
+
+2. **Install Playwright’s Chromium**  
+   Run `playwright install chromium` **in the same venv** as the app. Several scrapers (Prosple, TalentEgg, Eluta) need a real browser; skipping this step usually causes browser-related errors on scan.
+
+3. **Configure `.env` and API keys**  
+   Copy `.env.example` to `.env` (never commit `.env`). Set at least **`GEMINI_API_KEY`** (recommended) **or** **`OPENAI_API_KEY`** so the pipeline can score jobs and fill `match_score`, `reason`, and `tags`. Add Telegram variables only if you want notifications.
+
+4. **Customize keywords in `user_profile.yaml`**  
+   Role gating and LLM context come from **[`user_profile.yaml`](user_profile.yaml)** (`keywords:` for which postings are kept, `profile:` for how the model describes you). **Adjust keyword groups to match your own direction** (stack, title patterns, seniority). The sample committed in this repo is oriented toward **frontend, backend, and full-stack** style roles as a starting point—replace or extend groups as needed.
+
+5. **Restart the server after YAML changes**  
+   Keyword patterns and profile text are loaded **at process start**. After editing `user_profile.yaml`, **restart `uvicorn`**. Optionally run `python scripts/validate_user_profile.py` first to catch YAML/regex issues.
+
+6. **Data stays on your machine**  
+   Stored jobs live in **`data/*.db`** (SQLite; listed in `.gitignore`). A fresh clone has **no rows** until you run **Run scan** or wait for the scheduler. To wipe local postings, delete `data/*.db` and restart the app.
 
 ## Local installation (detailed)
 
@@ -142,7 +164,12 @@ pytest -q
 
 After the server is running, open **http://127.0.0.1:8000/** for a table with refresh, **High signal** / **Canada** filters, **Run scan**, and **Mark applied** (`PATCH /jobs/{id}/applied`).
 
+- **High signal**: loads **`GET /jobs/high-priority`** (same pagination behavior as `/jobs`). Uncheck to use the full list from **`GET /jobs`**.
+- **Canada**: **client-side** filter in [`app/static/app.js`](app/static/app.js). The API still returns all stored rows; the checkbox **hides** rows that match US-focused heuristics (US state names and `City, ST` codes, major US metros, explicit **USA** / **United States** / “remote in USA”, and similar). This is not a SQL filter and is not perfect on messy location text; uncheck **Canada** to see everything. After changing dashboard JS, do a **hard refresh** in the browser (or restart `uvicorn` if you rely on cached assets).
+
 Static assets live under `app/static/` and are served from `/static/...`.
+
+**Location text in the table** comes from scrapers plus optional **detail-page enrichment** (JSON-LD `JobPosting`): multiple `jobLocation` values are joined with **`; `**, and obviously glued strings (e.g. missing spaces after state codes) are normalized in [`app/utils/job_location_html.py`](app/utils/job_location_html.py) and again for display in the dashboard JS.
 
 ## API list ordering
 
@@ -170,6 +197,9 @@ See [`.env.example`](.env.example) for every variable and inline comments. Summa
 | `PROSPLE_SEARCH_URL` | Prosple search URL |
 | `TALENTEGG_INTERNSHIPS_URL` | TalentEgg listing URL |
 | `ELUTA_*` | Enable Eluta, list URL, caps |
+| `JOB_LOCATION_DETAIL_FETCH_ENABLED` | If `true`, GET listing URLs’ job pages to read city/region from JSON-LD (default on; set `false` to shorten scans) |
+| `JOB_LOCATION_DETAIL_MAX_PER_SOURCE` | Cap on detail fetches per source per scan |
+| `JOB_LOCATION_DETAIL_DELAY_SEC` | Pause between detail requests (rate limiting) |
 | `SCAN_INTERVAL_HOURS` | Scheduler interval (default `6`) |
 
 ## Sample Telegram notification
