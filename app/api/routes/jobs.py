@@ -1,5 +1,6 @@
 """Job listing and manual scan trigger."""
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +13,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.core.database import get_db
 from app.models.applied_url import AppliedUrl
 from app.models.job import Job
+from app.models.job_analysis import JobAnalysis
 from app.services.pipeline import get_pipeline_state, run_full_pipeline
 from app.utils.role_keywords import merged_focus_and_llm_tags
 from app.utils.url_norm import normalize_application_url
@@ -52,12 +54,13 @@ class AppliedPatch(BaseModel):
 def list_jobs(
     skip: int = 0,
     limit: int = 100,
+    sort_by: str = "default",
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Return recent jobs (paginated).
 
-    Order: priority (HIGH → MEDIUM → LOW), then intern/co-op style titles first,
-    then match_score descending (nulls last), then created_at descending.
+    sort_by=default        — priority → intern boost → match_score → created_at
+    sort_by=priority_apply — Analyze APPLY first, then score desc; unanalyzed last
     """
     prio = case(
         (Job.priority == "HIGH", 1),
@@ -76,12 +79,23 @@ def list_jobs(
     )
     total = q.count()
     rows = q.offset(skip).limit(limit).all()
+
+    # Batch-fetch analyze results for this page.
+    analyze_lookup = _analyze_lookup_map(db, rows)
+
+    if sort_by == "priority_apply":
+        _DECISION_ORDER = {"APPLY": 0, "STRETCH": 1, "SKIP": 3}
+        rows = sorted(rows, key=lambda j: (
+            _DECISION_ORDER.get((analyze_lookup.get(j.id) or {}).get("decision", ""), 2),
+            -((analyze_lookup.get(j.id) or {}).get("score") or 0),
+        ))
+
     applied_lookup = _applied_lookup_map(db, rows)
     return {
         "total": total,
         "skip": skip,
         "limit": limit,
-        "items": [_job_to_dict(j, applied_lookup=applied_lookup) for j in rows],
+        "items": [_job_to_dict(j, applied_lookup=applied_lookup, analyze_data=analyze_lookup.get(j.id)) for j in rows],
     }
 
 
@@ -115,12 +129,13 @@ def list_high_priority(
     )
     total = q.count()
     rows = q.offset(skip).limit(limit).all()
+    analyze_lookup = _analyze_lookup_map(db, rows)
     applied_lookup = _applied_lookup_map(db, rows)
     return {
         "total": total,
         "skip": skip,
         "limit": limit,
-        "items": [_job_to_dict(j, applied_lookup=applied_lookup) for j in rows],
+        "items": [_job_to_dict(j, applied_lookup=applied_lookup, analyze_data=analyze_lookup.get(j.id)) for j in rows],
     }
 
 
@@ -149,6 +164,21 @@ def trigger_scan(background_tasks: BackgroundTasks) -> dict[str, Any]:
 def scan_status() -> dict[str, Any]:
     """Return current pipeline status and last run result."""
     return get_pipeline_state()
+
+
+@router.get("/{job_id}")
+def get_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Return a single job with full (untruncated) description."""
+    row = db.query(Job).filter(Job.id == job_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    applied_lookup = _applied_lookup_map(db, [row])
+    analyze_lookup = _analyze_lookup_map(db, [row])
+    data = _job_to_dict(row, applied_lookup=applied_lookup, analyze_data=analyze_lookup.get(row.id))
+    # Override the truncated description with full text for the analysis SPA.
+    data["description"] = row.description or ""
+    data["description_truncated"] = False
+    return data
 
 
 @router.patch("/{job_id}/applied")
@@ -184,6 +214,25 @@ def patch_applied(
     return _job_to_dict(row, applied_lookup=applied_lookup)
 
 
+def _analyze_lookup_map(db: Session, jobs: list[Job]) -> dict[int, dict]:
+    """Map job_id → {score, decision, confidence} from cached analyses."""
+    ids = [j.id for j in jobs if j.id]
+    if not ids:
+        return {}
+    result = {}
+    for ja in db.query(JobAnalysis).filter(JobAnalysis.job_id.in_(ids)).all():
+        try:
+            d = json.loads(ja.result_json)
+            result[ja.job_id] = {
+                "score": d.get("score"),
+                "decision": d.get("decision"),
+                "confidence": d.get("confidence"),
+            }
+        except Exception:
+            pass
+    return result
+
+
 def _applied_lookup_map(db: Session, jobs: list[Job]) -> dict[str, datetime]:
     """Map normalized URL → applied_at from persistent store."""
     norms = {normalize_application_url(j.url) for j in jobs if j.url}
@@ -198,6 +247,7 @@ def _job_to_dict(
     j: Job,
     *,
     applied_lookup: dict[str, datetime] | None = None,
+    analyze_data: dict | None = None,
 ) -> dict[str, Any]:
     n = normalize_application_url(j.url)
     applied_at = j.applied_at
@@ -231,4 +281,8 @@ def _job_to_dict(
             j.description or "",
         ),
         "applied_at": applied_at.isoformat() if applied_at else None,
+        # Analyze fields — null when job has not been analyzed yet.
+        "analyze_score": (analyze_data or {}).get("score"),
+        "analyze_decision": (analyze_data or {}).get("decision"),
+        "analyze_confidence": (analyze_data or {}).get("confidence"),
     }

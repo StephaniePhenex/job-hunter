@@ -1,11 +1,19 @@
 .venv/
 __pycache__/
 *.py[cod]
+.DS_Store
+.cursor/
+
+frontend/node_modules/
 
 # Secrets and machine-local config — copy `.env.example` to `.env` and never commit `.env`.
 .env
 .env.*
 !.env.example
 data/*.db
+# Resume bodies (local only); keep directory with .gitkeep
+data/resumes/*
+!data/resumes/.gitkeep
+!data/resumes/README.md
 .pytest_cache/
 .mypy_cache/

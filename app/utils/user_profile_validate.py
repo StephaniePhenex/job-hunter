@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.agents.profile import UserProfile
+from app.agents.profile import ResumeEntry, UserProfile
 
 
 def validate_user_profile_yaml(path: Path) -> tuple[list[str], list[str]]:
@@ -42,6 +42,26 @@ def validate_user_profile_yaml(path: Path) -> tuple[list[str], list[str]]:
             UserProfile.model_validate(raw_profile)
         except Exception as e:
             errors.append(f"Invalid `profile:` section: {e}")
+
+    # --- resumes (optional, used by Analyze agent) ---
+    raw_resumes = data.get("resumes")
+    if raw_resumes is not None:
+        if not isinstance(raw_resumes, list):
+            errors.append("`resumes` must be a list of {id, content} entries.")
+        else:
+            seen_ids: set[str] = set()
+            for i, entry in enumerate(raw_resumes):
+                if not isinstance(entry, dict):
+                    errors.append(f"resumes[{i}] must be a mapping, got {type(entry).__name__}.")
+                    continue
+                try:
+                    r = ResumeEntry.model_validate(entry)
+                except Exception as e:
+                    errors.append(f"resumes[{i}]: {e}")
+                    continue
+                if r.id in seen_ids:
+                    errors.append(f"resumes[{i}]: duplicate id '{r.id}'.")
+                seen_ids.add(r.id)
 
     # --- keywords ---
     raw_kw = data.get("keywords")

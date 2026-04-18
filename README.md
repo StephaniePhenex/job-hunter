@@ -118,7 +118,11 @@ mkdir -p data
 
 On first run, the app will create the SQLite file if it does not exist.
 
-### 7. Run the API and open the dashboard
+### 7. Resume files for Analyze (optional)
+
+Put resume files in **`data/resumes/`** (one per file; see [`data/resumes/README.md`](data/resumes/README.md)). Supported: **`.docx`** (Word), **`.md`**, **`.txt`** (UTF-8). The filename stem becomes the resume **`id`** (normalized). These merge with the `resumes:` list in [`user_profile.yaml`](user_profile.yaml); if the same `id` exists in both, **the file wins**. Configure `RESUME_FILES_DIR` and `RESUME_FILES_ENABLED` in `.env` (see [`.env.example`](.env.example)). **Restart `uvicorn`** after adding or changing files (profiles load at process start).
+
+### 8. Run the API and open the dashboard
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -134,7 +138,7 @@ curl -X POST http://127.0.0.1:8000/run-scan
 
 Poll **`GET /jobs/scan-status`** until the pipeline is idle, then refresh the table.
 
-### 8. Validate `user_profile.yaml` (optional)
+### 9. Validate `user_profile.yaml` (optional)
 
 After editing keywords or `profile`, check for YAML/regex errors **before** restarting the server:
 
@@ -144,7 +148,7 @@ python scripts/validate_user_profile.py
 
 Optional path: `python scripts/validate_user_profile.py /path/to/user_profile.yaml`. Exit code **0** means no blocking errors; warnings (e.g. zero keyword groups) are printed to stderr.
 
-### 9. Run tests (optional)
+### 10. Run tests (optional)
 
 ```bash
 pytest -q

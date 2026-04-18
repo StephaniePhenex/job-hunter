@@ -79,29 +79,21 @@ def parse_organic_jobs(html: str) -> list[dict[str, str]]:
     return out
 
 
-def _scrape_eluta_with_page(page) -> list[JobNormalized]:
-    settings = get_settings()
-    if not settings.eluta_enabled or settings.eluta_max_jobs <= 0:
-        return []
+def _scrape_one_url(
+    page,
+    base_list: str,
+    max_pages: int,
+    cap: int,
+    seen_urls: set[str],
+    posted_default: str,
+    bot_blocked: list[bool],
+) -> list[JobNormalized]:
+    """Scrape one Eluta search URL across up to max_pages pages.
 
-    cap = settings.eluta_max_jobs
-    max_pages = settings.eluta_max_pages
-    base_list = str(settings.eluta_list_url).strip()
-    if not base_list:
-        return []
-
+    Shares seen_urls for cross-URL deduplication.
+    Sets bot_blocked[0]=True and stops early if a challenge page is detected.
+    """
     collected: list[JobNormalized] = []
-    seen_urls: set[str] = set()
-    posted_default = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    # Warm-up: visit homepage first so we arrive at the listing page with an
-    # established session/cookies, reducing bot-detection risk.
-    try:
-        page.goto("https://www.eluta.ca/", wait_until="domcontentloaded")
-        page.wait_for_timeout(random.randint(2500, 4000))
-    except Exception:
-        logger.debug("Eluta: homepage warm-up failed; proceeding anyway")
-
     for pnum in range(1, max_pages + 1):
         if len(collected) >= cap:
             break
@@ -114,18 +106,17 @@ def _scrape_eluta_with_page(page) -> list[JobNormalized]:
             logger.exception("Eluta page.goto failed: %s", url)
             break
 
-        # Detect bot-challenge page (IP-based rate limiting by Eluta).
         page_title = page.title().lower()
         if "user verification" in page_title or "are you a human" in html.lower():
             logger.warning(
-                "Eluta: bot-detection challenge triggered (IP may be rate-limited). "
-                "Try again later or set ELUTA_ENABLED=false to skip this source."
+                "Eluta: bot-detection triggered on %s — stopping all URLs for this run", url
             )
+            bot_blocked[0] = True
             break
 
         rows = parse_organic_jobs(html)
         if not rows:
-            logger.info("Eluta: no organic jobs on page %s, stopping.", pnum)
+            logger.info("Eluta: no organic jobs on page %s of %s, stopping.", pnum, base_list)
             break
 
         for row in rows:
@@ -149,7 +140,55 @@ def _scrape_eluta_with_page(page) -> list[JobNormalized]:
 
         page.wait_for_timeout(random.randint(300, 900))
 
-    logger.info("Eluta: collected %s jobs (cap=%s)", len(collected), cap)
+    return collected
+
+
+def _scrape_eluta_with_page(page) -> list[JobNormalized]:
+    settings = get_settings()
+    if not settings.eluta_enabled or settings.eluta_max_jobs <= 0:
+        return []
+
+    cap = settings.eluta_max_jobs
+    max_pages = settings.eluta_max_pages
+    primary_url = str(settings.eluta_list_url).strip()
+    if not primary_url:
+        return []
+
+    # Build full list of URLs: primary + any extras from config
+    all_urls = [primary_url]
+    extra_raw = str(settings.eluta_extra_urls).strip()
+    if extra_raw:
+        for u in extra_raw.split(","):
+            u = u.strip()
+            if u and u != primary_url:
+                all_urls.append(u)
+
+    collected: list[JobNormalized] = []
+    seen_urls: set[str] = set()
+    posted_default = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    bot_blocked = [False]
+
+    # Warm-up: visit homepage first to establish session/cookies.
+    try:
+        page.goto("https://www.eluta.ca/", wait_until="domcontentloaded")
+        page.wait_for_timeout(random.randint(2500, 4000))
+    except Exception:
+        logger.debug("Eluta: homepage warm-up failed; proceeding anyway")
+
+    for i, base_list in enumerate(all_urls):
+        if len(collected) >= cap or bot_blocked[0]:
+            break
+        remaining_cap = cap - len(collected)
+        logger.info("Eluta: scraping URL %d/%d: %s", i + 1, len(all_urls), base_list)
+        batch = _scrape_one_url(
+            page, base_list, max_pages, remaining_cap, seen_urls, posted_default, bot_blocked
+        )
+        collected.extend(batch)
+        logger.info("Eluta: +%d jobs from URL %d (total so far: %d)", len(batch), i + 1, len(collected))
+        if i < len(all_urls) - 1 and not bot_blocked[0]:
+            page.wait_for_timeout(random.randint(1000, 2000))
+
+    logger.info("Eluta: collected %d unique jobs across %d URL(s) (cap=%d)", len(collected), len(all_urls), cap)
     return collected
 
 

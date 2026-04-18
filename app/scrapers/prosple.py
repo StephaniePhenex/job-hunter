@@ -70,11 +70,30 @@ def _scrape_with_page(page) -> list[JobNormalized]:
     settings = get_settings()
     url = str(settings.prosple_search_url)
     page.goto(url, wait_until="domcontentloaded")
-    page.wait_for_timeout(2500)
+    # Wait for page to fully settle — Cloudflare JS challenge can trigger a
+    # redirect after domcontentloaded, destroying the execution context.
+    # networkidle waits until no network activity for 500ms, by which point
+    # any challenge redirect has completed.
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass  # timeout is fine; fall through and try querying anyway
+    page.wait_for_timeout(1500)
+
+    # Bail out if Cloudflare challenge page is still active
+    current_url = page.url
+    if "challenge" in current_url or "cdn-cgi" in current_url:
+        logger.warning("Prosple: Cloudflare challenge detected at %s — skipping", current_url)
+        return []
+
     # Listing links use /graduate-employers/.../jobs-internships/... (not legacy /job/)
-    anchors = page.query_selector_all(
-        "a[href*='/jobs-internships/'], a[href*='/graduate-employers/'][href*='internship']"
-    )
+    try:
+        anchors = page.query_selector_all(
+            "a[href*='/jobs-internships/'], a[href*='/graduate-employers/'][href*='internship']"
+        )
+    except Exception:
+        logger.warning("Prosple: query_selector_all failed (likely mid-navigation) — skipping")
+        return []
 
     out: list[JobNormalized] = []
     seen: set[str] = set()

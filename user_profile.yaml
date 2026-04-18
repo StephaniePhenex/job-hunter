@@ -19,6 +19,52 @@ profile:
     - "Robotics, perception, and computer vision"
 
 # ------------------------------------------------------------
+# Anti-hallucination guards for the Optimize agent.
+# verified_skills: skills you ACTUALLY have — the Writer may highlight these.
+# never_claim:     things you do NOT have — the Writer must NEVER add these.
+# ------------------------------------------------------------
+verified_skills:
+  - Python
+  - TypeScript
+  - React
+  - FastAPI
+  - PostgreSQL
+  - Docker
+  - ROS 2
+  - OpenCV
+  - PyTorch
+  - REST APIs
+  - Git
+
+never_claim:
+  - Kubernetes
+  - AWS certification
+  - Azure
+  - 5+ years experience
+  - PhD completed
+  - production at scale (millions of users)
+
+# ------------------------------------------------------------
+# Resumes: the Analyze agent picks the best-fit resume for each job.
+# Each entry needs a unique `id` (short tag) and `content` (plain text).
+# Add as many resumes as you like; the LLM routes to the best match.
+# ------------------------------------------------------------
+resumes:
+  - id: fullstack
+    content: |
+      Full-Stack Software Engineer
+      Skills: React, TypeScript, Python, FastAPI, PostgreSQL, Docker
+      Experience: 2 internships building SaaS products; personal LLM project
+      Education: BSc Computer Science (in progress)
+
+  - id: research
+    content: |
+      Research & Engineering
+      Skills: Python, ROS 2, OpenCV, PyTorch, data pipelines
+      Experience: Robotics research lab (computer vision); podcast production
+      Education: BSc Computer Science + independent research
+
+# ------------------------------------------------------------
 # Keywords: control which jobs pass the pre-LLM filter.
 # Only jobs matching at least ONE group reach LLM scoring.
 # Priority is based on how many groups match (1=LOW, 2-3=MEDIUM, 4+=HIGH).

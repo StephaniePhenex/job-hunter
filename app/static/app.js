@@ -8,6 +8,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const state = {
   highOnly: false,
   canadaOnly: false,
+  priorityApply: false,
 };
 
 /** US state / territory codes when used as "City, ST" (excludes Canadian provinces). */
@@ -201,6 +202,7 @@ async function fetchAllJobs() {
   const items = [];
   for (;;) {
     const qs = new URLSearchParams({ skip: String(skip), limit: String(PAGE_SIZE) });
+    if (state.priorityApply && !state.highOnly) qs.set("sort_by", "priority_apply");
     const r = await fetch(`${base}?${qs}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
@@ -224,7 +226,7 @@ function setStatus(msg, kind = "") {
 
 async function loadTable() {
   const tbody = $("#jobs-body");
-  tbody.innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   try {
     const { total: apiTotal, items: rawItems } = await fetchAllJobs();
     let items = rawItems;
@@ -235,7 +237,7 @@ async function loadTable() {
       const msg = state.canadaOnly
         ? "No jobs match the Canada filter. Try unchecking Canada or refresh data."
         : "No jobs yet. Run a scan or check the API.";
-      tbody.innerHTML = `<tr><td colspan="8" class="empty">${esc(msg)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty">${esc(msg)}</td></tr>`;
       setStatus(msg, "");
       return;
     }
@@ -255,7 +257,7 @@ async function loadTable() {
     });
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">Failed to load jobs.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">Failed to load jobs.</td></tr>`;
     setStatus(String(e.message || e), "err");
   }
 }
@@ -284,6 +286,19 @@ function formatLocationCell(j) {
   return base;
 }
 
+const ANALYZE_BADGE = {
+  APPLY:   { label: "APPLY",   cls: "analyze-badge analyze-badge--apply" },
+  STRETCH: { label: "STRETCH", cls: "analyze-badge analyze-badge--stretch" },
+  SKIP:    { label: "SKIP",    cls: "analyze-badge analyze-badge--skip" },
+};
+
+function renderAnalyzeBadge(j) {
+  if (!j.analyze_decision) return `<span class="analyze-badge analyze-badge--none">—</span>`;
+  const b = ANALYZE_BADGE[j.analyze_decision] || ANALYZE_BADGE.SKIP;
+  const score = j.analyze_score != null ? ` ${j.analyze_score}` : "";
+  return `<span class="${b.cls}">${b.label}${score}</span>`;
+}
+
 function rowHtml(j) {
   const applied = Boolean(j.applied_at);
   const location = formatLocationCell(j);
@@ -303,7 +318,11 @@ function rowHtml(j) {
       <td class="cell-location">${esc(location)}</td>
       <td>${renderTags(j.tags)}</td>
       <td>${esc(j.source)}</td>
-      <td class="cell-link"><a class="link" href="${escAttr(j.url)}" target="_blank" rel="noopener noreferrer">Open</a></td>
+      <td class="cell-analyze">${renderAnalyzeBadge(j)}</td>
+      <td class="cell-link">
+        <a class="link" href="${escAttr(j.url)}" target="_blank" rel="noopener noreferrer">Open</a>
+        <a class="link link--analyze" href="/job/${j.id}/analysis">Analyze</a>
+      </td>
     </tr>
   `;
 }
@@ -374,6 +393,11 @@ function init() {
   });
   $("#filter-canada").addEventListener("change", (e) => {
     state.canadaOnly = e.target.checked;
+    loadTable();
+  });
+  $("#btn-priority-apply").addEventListener("click", () => {
+    state.priorityApply = !state.priorityApply;
+    $("#btn-priority-apply").classList.toggle("btn--active", state.priorityApply);
     loadTable();
   });
   $("#btn-refresh").addEventListener("click", () => {

@@ -15,7 +15,9 @@ from app.core.logging import setup_logging
 from app.core.schema_upgrade import upgrade_job_table
 from app.core.scheduler import shutdown_scheduler, start_scheduler
 from app.api.routes import jobs as jobs_routes
-from app.models import AppliedUrl  # noqa: F401 — register model for create_all
+from app.api.routes import analyze as analyze_routes
+from app.api.routes import optimize as optimize_routes
+from app.models import AppliedUrl, JobAnalysis  # noqa: F401 — register models for create_all
 from app.services.pipeline import get_pipeline_state, run_full_pipeline
 
 
@@ -47,6 +49,8 @@ app.add_middleware(
 )
 
 app.include_router(jobs_routes.router, prefix="/jobs", tags=["jobs"])
+app.include_router(analyze_routes.router, prefix="/api/analyze", tags=["analyze"])
+app.include_router(optimize_routes.router, prefix="/api/optimize", tags=["optimize"])
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 if STATIC_ROOT.is_dir():
@@ -90,3 +94,24 @@ def scan_status_root() -> dict:
 def health() -> dict[str, str]:
     """Liveness probe."""
     return {"status": "ok"}
+
+
+# ─── Analysis SPA (built by frontend/ Vite project) ───────────────────────────
+# Route /job/{job_id}/analysis → serve the React SPA index.html.
+# Assets (JS/CSS) are resolved via the already-mounted /static StaticFiles above
+# once `npm run build` outputs to app/static/analysis/.
+
+_ANALYSIS_SPA = STATIC_ROOT / "analysis" / "index.html"
+
+
+@app.get("/job/{job_id}/analysis", response_model=None)
+def analysis_page(job_id: int):
+    """Serve the React analysis SPA for a given job."""
+    if not _ANALYSIS_SPA.is_file():
+        return {
+            "detail": (
+                "Analysis SPA not built yet. "
+                "Run: cd frontend && npm install && npm run build"
+            )
+        }
+    return FileResponse(_ANALYSIS_SPA)

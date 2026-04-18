@@ -51,10 +51,18 @@ class Settings(BaseSettings):
     eluta_enabled: bool = True
     eluta_list_url: str = Field(
         default="https://www.eluta.ca/Software-Engineer-jobs",
-        description="First page of job search/list; pagination uses ?pg=N.",
+        description="Primary search/list URL; pagination uses ?pg=N.",
     )
-    eluta_max_jobs: int = Field(default=60, ge=0, description="Max rows collected per scan.")
-    eluta_max_pages: int = Field(default=8, ge=1, description="Safety cap on list pages to fetch.")
+    eluta_extra_urls: str = Field(
+        default=(
+            "https://www.eluta.ca/Software-Developer-jobs,"
+            "https://www.eluta.ca/Full-Stack-Developer-jobs,"
+            "https://www.eluta.ca/Application-Developer-jobs"
+        ),
+        description="Comma-separated additional Eluta slug URLs scraped after the primary. Results are merged and deduplicated.",
+    )
+    eluta_max_jobs: int = Field(default=120, ge=0, description="Max rows collected across all URLs per scan.")
+    eluta_max_pages: int = Field(default=5, ge=1, description="Safety cap on list pages per URL.")
 
     # After list scrape, GET job detail HTML and parse city/region (JSON-LD JobPosting).
     # Enabled by default: Prosple/TalentEgg only give country-level location ("Canada");
@@ -71,6 +79,19 @@ class Settings(BaseSettings):
     )
 
     scan_interval_hours: int = 6
+
+    # Analyze agent: set False to call real LLM; True returns canned mock result.
+    analyze_use_mock: bool = True
+
+    # Optimize agent: set False to call real LLM.
+    optimize_use_mock: bool = True
+
+    # Merge resume text from disk with user_profile.yaml `resumes:` (same id → file wins).
+    resume_files_enabled: bool = True
+    resume_files_dir: str = Field(
+        default="data/resumes",
+        description="Directory under project root with *.docx / *.md / *.txt resume bodies.",
+    )
 
 
 @lru_cache
