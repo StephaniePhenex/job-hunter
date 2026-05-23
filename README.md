@@ -21,7 +21,11 @@ Each feed answers a different “where do postings actually show up?” problem.
 | **TalentEgg** | A **Canadian** early-career platform (`talentegg.ca`) with employer postings and student-focused roles. | **Another Canadian channel**: employers often post here who may not appear on Prosple or on the big US internship README. Adds **diversity of employers** (industries and company sizes) so you are not relying on a single board. |
 | **Eluta** | **Canadian job search** (`eluta.ca`) with organic HTML job listings (e.g. by role slug or search). | **General Canadian job market** coverage beyond “student-only” sites — useful for **software and related roles** that are posted like standard jobs. Helps when internships or junior roles are listed on broad job search engines rather than only on campus boards. |
 
-**Important**: All sources pass the same **focus role keyword** gate. Rules live in **[`user_profile.yaml`](user_profile.yaml)** (`keywords:`); edit that file to personalize filters and LLM profile (`profile:`). **Restart `uvicorn`** after changes (patterns load at import). If a posting’s title/company/description does not match any **keyword group**, it is dropped before LLM scoring.
+Additional Canada-focused source to check manually while tuning the scraper:
+
+- [Hanzilla Jobs](https://jobs.hanzilla.co/internships/) — a free, daily-updated Canadian student and recent-grad jobs board for internships, co-ops, new grad, junior, and entry-level roles across tech, finance, engineering, business, sciences, and more. It is useful as a Canada-specific comparison source when validating whether the agent is missing student-friendly roles from company career pages.
+
+**Important**: All configured scraper sources pass the same **focus role keyword** gate. Rules live in **[`user_profile.yaml`](user_profile.yaml)** (`keywords:`); edit that file to personalize filters and LLM profile (`profile:`). **Restart `uvicorn`** after changes (patterns load at import). If a posting’s title/company/description does not match any **keyword group**, it is dropped before LLM scoring.
 
 ## Requirements
 
